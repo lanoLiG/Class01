@@ -1,0 +1,23 @@
+<!-- CSRF 防御已启用 - 所有 POST 请求需要携带 csrf_token -->
+{% extends "base.html" %}
+{% block content %}
+<div class="card login-card">
+    <h2>用户登录</h2>
+    {% if error %}
+        <div class="error-msg">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="/login" class="login-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="form-group">
+            <label for="username">用户名</label>
+            <input type="text" id="username" name="username" placeholder="请输入用户名" maxlength="64" required>
+        </div>
+        <div class="form-group">
+            <label for="password">密码</label>
+            <input type="password" id="password" name="password" placeholder="请输入密码" maxlength="128" required>
+        </div>
+        <button type="submit" class="btn btn-primary">登录</button>
+    </form>
+</div>
+{% endblock %}
