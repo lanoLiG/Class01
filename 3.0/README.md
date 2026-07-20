@@ -68,23 +68,178 @@ SELECT * FROM users WHERE username LIKE '%' OR 1=1 -- %'
 
 ### 针对问题一的修复
 
-1. SQL 语句改用参数化查询，将用户数据与 SQL 结构分离：
-   - 原写法：`f"VALUES ('{username}', '{password}', '{email}', '{phone}')"`
-   - 修改后：`VALUES (?, ?, ?, ?)`，参数通过元组 `(username, password, email, phone)` 传入
-2. 移除日志中打印完整 SQL 的语句
-3. SQLite 驱动自动对参数中的特殊字符进行转义处理，单引号、分号、连字符等不再影响 SQL 语义
+将 f-string 拼接的 SQL 替换为参数化查询，同时对用户输入实施格式校验。
+
+**修复前代码：**
+
+```python
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "GET":
+        return render_template("register.html")
+
+    username = request.form.get("username", "")
+    password = request.form.get("password", "")
+    email = request.form.get("email", "")
+    phone = request.form.get("phone", "")
+
+    conn = sqlite3.connect("data/users.db")
+    cur = conn.cursor()
+    sql = f"INSERT INTO users (username, password, email, phone) VALUES ('{username}', '{password}', '{email}', '{phone}')"
+    logger.info(f"[REGISTER] 执行 SQL: {sql}")
+    try:
+        cur.execute(sql)
+        conn.commit()
+    except sqlite3.IntegrityError:
+        return render_template("register.html", error="用户名已存在，请换一个")
+    conn.close()
+    return redirect("/login?msg=注册成功，请登录")
+```
+
+**修复后代码：**
+
+```python
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "GET":
+        return render_template("register.html")
+
+    username = (request.form.get("username") or "").strip()
+    password = request.form.get("password") or ""
+    email = (request.form.get("email") or "").strip()
+    phone = (request.form.get("phone") or "").strip()
+
+    if not username or not password:
+        return render_template("register.html", error="用户名和密码不能为空")
+    if len(username) > 50 or len(password) > 128:
+        return render_template("register.html", error="用户名或密码过长")
+    if len(username) < 2:
+        return render_template("register.html", error="用户名至少 2 个字符")
+    if len(password) < 6:
+        return render_template("register.html", error="密码至少 6 个字符")
+    if email and not re.match(r'^[^@]+@[^@]+\.[^@]+$', email):
+        return render_template("register.html", error="邮箱格式不正确")
+    if phone and not re.match(r'^\+?\d{7,15}$', phone):
+        return render_template("register.html", error="手机号格式不正确")
+
+    conn = sqlite3.connect("data/users.db")
+    cur = conn.cursor()
+    sql = "INSERT INTO users (username, password, email, phone) VALUES (?, ?, ?, ?)"
+    try:
+        cur.execute(sql, (username, password, email, phone))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        return render_template("register.html", error="用户名已存在，请换一个")
+    conn.close()
+    return redirect("/login?msg=注册成功，请登录")
+```
+
+**代码变更说明：**
+
+- 第 9 行：`VALUES ('{username}', '{password}', '{email}', '{phone}')` 改为 `VALUES (?, ?, ?, ?)`，参数通过元组传入
+- 第 5~8 行：每个字段增加 `.strip()` 处理及空值兜底
+- 第 12~23 行：新增 6 项输入验证，覆盖空值、长度、邮箱格式、手机号格式
+- 移除日志中打印完整 SQL 的语句
 
 ### 针对问题二的修复
 
-1. SQL 语句改用参数化查询：
-   - 原写法：`f"WHERE username LIKE '%{keyword}%'"`
-   - 修改后：`WHERE username LIKE ?`，参数值为 `f"%{keyword}%"`
-2. 移除 `print(f"[SEARCH] SQL: {sql}")` 语句，防止 SQL 信息在控制台泄露
-3. 日志记录改为仅记录关键词文本，不再输出完整 SQL
+将 f-string 拼接的 LIKE 查询替换为参数化查询，增加登录认证检查，移除控制台 SQL 输出。
+
+**修复前代码：**
+
+```python
+@app.route("/search")
+def search():
+    keyword = request.args.get("keyword", "")
+    username = session.get("username")
+    user_info = get_safe_user_info(username) if username else None
+
+    results = []
+    if keyword:
+        conn = sqlite3.connect("data/users.db")
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        sql = f"SELECT * FROM users WHERE username LIKE '%{keyword}%' OR email LIKE '%{keyword}%'"
+        logger.info(f"[SEARCH] 执行 SQL: {sql}")
+        print(f"[SEARCH] SQL: {sql}")
+        try:
+            cur.execute(sql)
+            rows = cur.fetchall()
+            results = [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"[SEARCH] 查询异常: {e}")
+        conn.close()
+
+    return render_template("index.html", user=user_info, search_results=results, search_keyword=keyword)
+```
+
+**修复后代码：**
+
+```python
+@app.route("/search")
+def search():
+    username = session.get("username")
+    if not username:
+        return redirect("/login")
+
+    user_info = get_safe_user_info(username)
+    keyword = (request.args.get("keyword") or "").strip()
+
+    if len(keyword) > 100:
+        keyword = keyword[:100]
+
+    results = []
+    if keyword:
+        conn = sqlite3.connect("data/users.db")
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        sql = "SELECT * FROM users WHERE username LIKE ? OR email LIKE ?"
+        like_param = f"%{keyword}%"
+        logger.info(f"[SEARCH] 搜索关键词: '{keyword}'")
+        try:
+            cur.execute(sql, (like_param, like_param))
+            rows = cur.fetchall()
+            results = [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"[SEARCH] 查询异常: {e}")
+        conn.close()
+
+    return render_template("index.html", user=user_info, search_results=results, search_keyword=keyword)
+```
+
+**代码变更说明：**
+
+- 第 11~12 行：`LIKE '%{keyword}%'` 改为 `LIKE ?`，通配符 `%keyword%` 作为参数值传入
+- 第 5~7 行：新增 session 检查，未登录用户重定向至登录页
+- 第 10 行：新增关键词长度限制，超 100 字符自动截断
+- 移除 `print(f"[SEARCH] SQL: {sql}")`，日志改为仅记录关键词文本
 
 ### 针对问题三的修复
 
-对用户输入设置了多层验证规则：
+在 register 路由中新增完整的输入验证逻辑，所有验证在 SQL 执行之前完成，不合法输入直接返回错误页面。
+
+```python
+# register 路由 — 新增的输入验证代码
+username = (request.form.get("username") or "").strip()
+password = request.form.get("password") or ""
+email = (request.form.get("email") or "").strip()
+phone = (request.form.get("phone") or "").strip()
+
+if not username or not password:
+    return render_template("register.html", error="用户名和密码不能为空")
+if len(username) > 50 or len(password) > 128:
+    return render_template("register.html", error="用户名或密码过长")
+if len(username) < 2:
+    return render_template("register.html", error="用户名至少 2 个字符")
+if len(password) < 6:
+    return render_template("register.html", error="密码至少 6 个字符")
+if email and not re.match(r'^[^@]+@[^@]+\.[^@]+$', email):
+    return render_template("register.html", error="邮箱格式不正确")
+if phone and not re.match(r'^\+?\d{7,15}$', phone):
+    return render_template("register.html", error="手机号格式不正确")
+```
+
+验证规则汇总：
 
 | 字段 | 验证规则 |
 |------|---------|
@@ -94,19 +249,16 @@ SELECT * FROM users WHERE username LIKE '%' OR 1=1 -- %'
 | 手机号 | 选填，7~15 位数字，允许前导 `+` |
 | 搜索关键词 | 最长 100 字符，超长自动截断 |
 
-以上验证在 SQL 执行之前完成，不合法输入直接返回错误页面，不会进入数据库操作阶段。
-
 ### 针对问题四的修复
 
-search 路由入口处增加 session 检查：
+search 路由入口处增加 session 检查，未持有有效会话的用户将被重定向至登录页面，无法访问搜索功能。
 
-```
+```python
+# search 路由 — 开头新增的登录检查
 username = session.get("username")
 if not username:
     return redirect("/login")
 ```
-
-未持有有效会话的用户将被重定向至登录页面，无法访问搜索功能。
 
 ---
 
