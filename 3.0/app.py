@@ -2,6 +2,7 @@ import secrets
 import logging
 import sqlite3
 import os
+import re
 from datetime import timedelta
 
 from flask import Flask, render_template, request, redirect, session, abort
@@ -149,19 +150,41 @@ def register():
     if request.method == "GET":
         return render_template("register.html")
 
-    # POST — 使用 f-string 字符串拼接插入 SQLite
-    username = request.form.get("username", "")
-    password = request.form.get("password", "")
-    email = request.form.get("email", "")
-    phone = request.form.get("phone", "")
+    # POST
+    username = (request.form.get("username") or "").strip()
+    password = request.form.get("password") or ""
+    email = (request.form.get("email") or "").strip()
+    phone = (request.form.get("phone") or "").strip()
+
+    # 输入验证
+    if not username or not password:
+        logger.warning(f"Register with empty fields from {request.remote_addr}")
+        return render_template("register.html", error="用户名和密码不能为空")
+
+    if len(username) > 50 or len(password) > 128:
+        logger.warning(f"Register with oversized input from {request.remote_addr}")
+        return render_template("register.html", error="用户名或密码过长")
+
+    if len(username) < 2:
+        return render_template("register.html", error="用户名至少 2 个字符")
+
+    if len(password) < 6:
+        return render_template("register.html", error="密码至少 6 个字符")
+
+    if email:
+        if not re.match(r'^[^@]+@[^@]+\.[^@]+$', email):
+            return render_template("register.html", error="邮箱格式不正确")
+
+    if phone:
+        if not re.match(r'^\+?\d{7,15}$', phone):
+            return render_template("register.html", error="手机号格式不正确")
 
     conn = sqlite3.connect("data/users.db")
     cur = conn.cursor()
-    # 注意：使用 f-string 拼接，不要参数化查询（教学用途）
-    sql = f"INSERT INTO users (username, password, email, phone) VALUES ('{username}', '{password}', '{email}', '{phone}')"
-    logger.info(f"[REGISTER] 执行 SQL: {sql}")
+    # 使用参数化查询修复 SQL 注入
+    sql = "INSERT INTO users (username, password, email, phone) VALUES (?, ?, ?, ?)"
     try:
-        cur.execute(sql)
+        cur.execute(sql, (username, password, email, phone))
         conn.commit()
         logger.info(f"[REGISTER] 用户 '{username}' 注册成功")
     except sqlite3.IntegrityError as e:
@@ -179,21 +202,29 @@ def register():
 # ── 搜索 ──────────────────────────────────────────────
 @app.route("/search")
 def search():
-    keyword = request.args.get("keyword", "")
+    # 要求登录才能搜索（减少攻击面）
     username = session.get("username")
-    user_info = get_safe_user_info(username) if username else None
+    if not username:
+        return redirect("/login")
+
+    user_info = get_safe_user_info(username)
+    keyword = (request.args.get("keyword") or "").strip()
+
+    # 关键词长度限制
+    if len(keyword) > 100:
+        keyword = keyword[:100]
 
     results = []
     if keyword:
         conn = sqlite3.connect("data/users.db")
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
-        # 注意：使用 f-string 拼接，不要参数化查询（教学用途）
-        sql = f"SELECT * FROM users WHERE username LIKE '%{keyword}%' OR email LIKE '%{keyword}%'"
-        logger.info(f"[SEARCH] 执行 SQL: {sql}")
-        print(f"[SEARCH] SQL: {sql}")
+        # 使用参数化查询修复 SQL 注入
+        sql = "SELECT * FROM users WHERE username LIKE ? OR email LIKE ?"
+        like_param = f"%{keyword}%"
+        logger.info(f"[SEARCH] 搜索关键词: '{keyword}'")
         try:
-            cur.execute(sql)
+            cur.execute(sql, (like_param, like_param))
             rows = cur.fetchall()
             results = [dict(row) for row in rows]
             logger.info(f"[SEARCH] 查询到 {len(results)} 条结果")
