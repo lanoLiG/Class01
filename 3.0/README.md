@@ -1,252 +1,286 @@
-# 用户信息管理平台 v3.0
+# SQL 注入漏洞修复报告 — v3.0
 
-> 在 [v2.0](../2.0) 的基础上，**保持原有登录功能不变**，新增 SQLite 数据库存储、用户注册和用户搜索三大功能，并对 SQL 注入漏洞进行了完整修复。
->
-> 适用课程阶段：Web 安全 — SQL 注入原理与防御
-
----
-
-## 目录
-
-1. [v3.0 功能总览](#v30-功能总览)
-2. [v3.0 详细改动说明](#v30-详细改动说明)
-   - [新增：SQLite 数据库](#1-新增sqlite-数据库)
-   - [新增：用户注册 /register（含注入修复）](#2-新增用户注册-register含注入修复)
-   - [新增：用户搜索 /search（含注入修复）](#3-新增用户搜索-search含注入修复)
-   - [修改：首页 index.html 增加搜索功能](#4-修改首页-indexhtml)
-   - [修改：导航栏 base.html 增加注册链接](#5-修改导航栏-basehtml)
-   - [新增：注册页面 register.html](#6-新增注册页面-registerhtml)
-3. [v2.0 存在的问题与 v3.0 的改进](#v20-存在的问题与-v30-的改进)
-4. [项目结构](#项目结构)
-5. [路由说明一览](#路由说明一览)
-6. [环境配置与运行](#环境配置与运行)
+> **项目名称**：Class01 用户管理系统  
+> **修复日期**：2026-07-20  
+> **风险等级**：严重（Critical）  
+> **漏洞类型**：SQL 注入（SQL Injection）
 
 ---
 
-## v3.0 功能总览
+## 一、漏洞概述
 
-v3.0 是一个具备完整用户管理功能的 Flask Web 应用，包含以下功能模块：
+v3.0 在 [v2.0](../2.0) 基础上新增了 SQLite 数据库、用户注册 `/register` 和用户搜索 `/search` 功能。在初始构建中，注册和搜索使用了 **f-string 字符串拼接** 的方式构建 SQL 语句，用户输入直接嵌入 SQL 代码中，导致存在 SQL 注入漏洞。
 
-| 功能 | 路由 | 说明 |
-|------|------|------|
-| **首页** | `GET /` | 已登录用户展示个人信息 + 搜索框；未登录提示登录 |
-| **用户登录** | `GET/POST /login` | 沿用 v2.0 的安全登录（bcrypt 哈希验证、CSRF 保护、限流） |
-| **用户注册** | `GET/POST /register` | **v3.0 新增** — 填写信息写入 SQLite 数据库 |
-| **用户搜索** | `GET /search` | **v3.0 新增** — 按用户名/邮箱模糊搜索，需登录后使用 |
-| **用户登出** | `GET /logout` | 清除 session |
-
-**安全特性**：注册和搜索的 SQL 已使用 **参数化查询**（`?` 占位符）修复 SQL 注入漏洞，
-并增加了输入验证和登录权限校验。
+| 漏洞位置 | SQL 构建方式 | 风险 |
+|---------|-------------|------|
+| `/register` — INSERT 语句 | `f"VALUES ('{username}', '{password}', ...)"` | 攻击者可插入任意数据、删表 |
+| `/search` — SELECT LIKE 语句 | `f"WHERE username LIKE '%{keyword}%'"` | 攻击者可查看全部用户数据、UNION 注入 |
 
 ---
 
-## v3.0 详细改动说明
+## 二、修复清单
 
-### 1. 新增：SQLite 数据库
+| # | 漏洞位置 | 漏洞类型 | 风险等级 | 修复状态 |
+|---|---------|---------|:--------:|:--------:|
+| 1 | `/register` — INSERT | SQL 注入（f-string 拼接） | 🔴 严重 | ✅ 已修复 |
+| 2 | `/search` — SELECT LIKE | SQL 注入（f-string 拼接） | 🔴 严重 | ✅ 已修复 |
+| 3 | 注册 + 搜索 — 用户输入 | 缺乏输入验证 | 🟡 中危 | ✅ 已修复 |
+| 4 | `/search` — 未登录可访问 | 认证缺失 | 🟡 中危 | ✅ 已修复 |
 
-| 改动项 | 说明 |
-|--------|------|
-| **涉及文件** | `app.py` — 新增 `init_db()` 函数 |
-| **数据库位置** | `data/users.db`（自动创建 `data/` 目录） |
-| **用户表结构** | `id`(自增主键)、`username`(唯一)、`password`、`email`、`phone` |
-| **默认数据** | 插入 `admin/admin123` 和 `alice/alice2025`，使用 `INSERT OR IGNORE` 防止重复 |
+---
 
+## 三、详细修复说明
+
+### 修复 1：注册功能 SQL 注入
+
+**涉及文件**：`app.py:147-199` — register 路由
+
+**漏洞代码（f-string 拼接）：**
 ```python
-def init_db():
-    os.makedirs("data", exist_ok=True)
-    conn = sqlite3.connect("data/users.db")
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            email TEXT,
-            phone TEXT
-        )
-    """)
-    for u, p, e, ph in [("admin","admin123","admin@example.com","13800138000"),
-                         ("alice","alice2025","alice@example.com","13900139001")]:
-        cur.execute("INSERT OR IGNORE INTO users ...", (u, p, e, ph))
-    conn.commit()
-    conn.close()
+# ❌ 用户输入直接拼入 SQL 语句
+username = request.form.get("username", "")
+password = request.form.get("password", "")
+email = request.form.get("email", "")
+phone = request.form.get("phone", "")
+
+sql = f"INSERT INTO users (username, password, email, phone) VALUES ('{username}', '{password}', '{email}', '{phone}')"
+logger.info(f"[REGISTER] 执行 SQL: {sql}")
+cur.execute(sql)  # 直接执行拼接后的 SQL
 ```
 
-### 2. 新增：用户注册 `/register`（含注入修复）
+**注入原理：**
+```
+当 username 输入为: hacker', 'pass', 'h@x.com', '123')--
+拼接结果: INSERT INTO users (...) VALUES ('hacker', 'pass', 'h@x.com', '123')--', '...', '...', '...')
+-- 注释符使后续 SQL 失效，攻击者可插入任意数据
 
-| 改动项 | 说明 |
-|--------|------|
-| **涉及文件** | `app.py` — 新增 `/register` 路由；`templates/register.html` — 新增注册页面 |
-| **路由方法** | GET 显示注册表单，POST 提交注册 |
-| **表单字段** | 用户名、密码、邮箱、手机号 |
-| **SQL 构建** | **参数化查询** `VALUES (?, ?, ?, ?)` — 修复了 f-string 拼接导致的 SQL 注入 |
-| **输入验证** | 空值检测、长度限制（用户名 2–50、密码 6–128）、邮箱/手机格式正则校验 |
-| **注册成功** | 重定向至 `/login?msg=注册成功，请登录` |
-| **重复用户** | 捕获 `IntegrityError`，提示"用户名已存在，请换一个" |
-
-```python
-@app.route("/register", methods=["GET", "POST"])
-def register():
-    if request.method == "GET":
-        return render_template("register.html")
-    # POST — 使用参数化查询（修复 SQL 注入）
-    username = (request.form.get("username") or "").strip()
-    password = request.form.get("password") or ""
-    email = (request.form.get("email") or "").strip()
-    phone = (request.form.get("phone") or "").strip()
-    # 输入验证...
-    conn = sqlite3.connect("data/users.db")
-    cur = conn.cursor()
-    sql = "INSERT INTO users (username, password, email, phone) VALUES (?, ?, ?, ?)"
-    cur.execute(sql, (username, password, email, phone))
-    conn.commit()
-    # ...
+更严重: ', 'x'); DROP TABLE users; --
+→ INSERT INTO users (...) VALUES ('', 'x'); DROP TABLE users; --', '...')
+→ 直接删除整个 users 表
 ```
 
-### 3. 新增：用户搜索 `/search`（含注入修复）
-
-| 改动项 | 说明 |
-|--------|------|
-| **涉及文件** | `app.py` — 新增 `/search` 路由；`templates/index.html` — 增加搜索框和结果表格 |
-| **路由方法** | 仅 GET |
-| **传入参数** | `?keyword=xxx` |
-| **SQL 构建** | **参数化查询** `LIKE ?` — 修复了 f-string 拼接导致的 SQL 注入 |
-| **登录限制** | 未登录用户重定向到 `/login` |
-| **搜索范围** | 用户名或邮箱含有关键词 |
-| **结果展示** | 首页表格显示 ID、用户名、邮箱、手机 |
-| **空结果** | 显示"无搜索结果" |
-
+**修复代码（参数化查询 + 输入验证）：**
 ```python
+# ✅ 使用 ? 占位符，SQL 结构与用户数据分离
+username = (request.form.get("username") or "").strip()
+password = request.form.get("password") or ""
+email = (request.form.get("email") or "").strip()
+phone = (request.form.get("phone") or "").strip()
+
+# 输入验证
+if not username or not password:
+    return render_template("register.html", error="用户名和密码不能为空")
+if len(username) > 50 or len(password) > 128:
+    return render_template("register.html", error="用户名或密码过长")
+if len(username) < 2:
+    return render_template("register.html", error="用户名至少 2 个字符")
+if len(password) < 6:
+    return render_template("register.html", error="密码至少 6 个字符")
+if email and not re.match(r'^[^@]+@[^@]+\.[^@]+$', email):
+    return render_template("register.html", error="邮箱格式不正确")
+if phone and not re.match(r'^\+?\d{7,15}$', phone):
+    return render_template("register.html", error="手机号格式不正确")
+
+conn = sqlite3.connect("data/users.db")
+cur = conn.cursor()
+sql = "INSERT INTO users (username, password, email, phone) VALUES (?, ?, ?, ?)"
+cur.execute(sql, (username, password, email, phone))
+conn.commit()
+```
+
+**修复措施：**
+
+| 措施 | 说明 |
+|------|------|
+| **参数化查询** | `VALUES (?, ?, ?, ?)` — 参数由 SQLite 驱动自动转义，单引号等特殊字符不影响 SQL 结构 |
+| **空值检测** | 用户名和密码为空时直接返回错误 |
+| **长度限制** | 用户名 2–50 字符、密码 6–128 字符 |
+| **格式校验** | 邮箱正则 `xxx@yyy.zzz`、手机号正则 `+`可选 + 7–15 位数字 |
+| **日志清理** | 移除 `logger.info(f"[REGISTER] 执行 SQL: {sql}")`，不再打印含用户输入的 SQL |
+
+---
+
+### 修复 2：搜索功能 SQL 注入
+
+**涉及文件**：`app.py:202-235` — search 路由
+
+**漏洞代码（f-string 拼接）：**
+```python
+# ❌ URL 参数直接拼入 LIKE 子句
+@app.route("/search")
+def search():
+    keyword = request.args.get("keyword", "")
+    username = session.get("username")
+    user_info = get_safe_user_info(username) if username else None
+    results = []
+    if keyword:
+        conn = sqlite3.connect("data/users.db")
+        cur = conn.cursor()
+        sql = f"SELECT * FROM users WHERE username LIKE '%{keyword}%' OR email LIKE '%{keyword}%'"
+        print(f"[SEARCH] SQL: {sql}")   # 控制台暴露完整 SQL
+        cur.execute(sql)
+```
+
+**注入原理：**
+```
+?keyword=' OR 1=1 --
+→ SELECT * FROM users WHERE username LIKE '%' OR 1=1 -- %'
+→ WHERE 恒为真，返回全部用户数据
+
+?keyword=' UNION SELECT 1,'admin','pwd','email','phone' --
+→ 窃取其他表数据
+```
+
+**修复代码（参数化查询 + 登录校验）：**
+```python
+# ✅ 参数化查询，仅登录用户可用
 @app.route("/search")
 def search():
     username = session.get("username")
-    if not username:          # 要求登录
+    if not username:                    # 要求登录
         return redirect("/login")
+
     user_info = get_safe_user_info(username)
     keyword = (request.args.get("keyword") or "").strip()
+
+    if len(keyword) > 100:              # 长度限制
+        keyword = keyword[:100]
+
+    results = []
     if keyword:
         conn = sqlite3.connect("data/users.db")
         cur = conn.cursor()
         sql = "SELECT * FROM users WHERE username LIKE ? OR email LIKE ?"
-        cur.execute(sql, (f"%{keyword}%", f"%{keyword}%"))
-        # ...
+        like_param = f"%{keyword}%"
+        logger.info(f"[SEARCH] 搜索关键词: '{keyword}'")
+        cur.execute(sql, (like_param, like_param))   # 参数自动转义
 ```
 
-### 4. 修改：首页 index.html
+**修复措施：**
 
-搜索结果区域新增在已登录状态下：
-- 搜索输入框 + 搜索按钮
-- 关键词存在时显示结果表格（ID、用户名、邮箱、手机）
-- 关键词存在但无结果时显示"无搜索结果"
-
-### 5. 修改：导航栏 base.html
-
-未登录状态下增加"注册"链接：
-
-```html
-{% else %}
-    <a href="/register" class="nav-link">注册</a>   <!-- ← 新增 -->
-    <a href="/login" class="nav-link">登录</a>
-{% endif %}
-```
-
-### 6. 新增：注册页面 register.html
-
-- 继承 `base.html`
-- 包含用户名、密码、邮箱、手机号四个输入框
-- 注册按钮
-- 底部"已有账号？立即登录"链接
-- 携带 CSRF token
+| 措施 | 说明 |
+|------|------|
+| **参数化查询** | `LIKE ?` — 通配符 `%` 作为参数值传入，不拼接到 SQL 模板 |
+| **登录校验** | 未登录用户重定向到 `/login` |
+| **长度限制** | 关键词最长 100 字符，超长截断 |
+| **日志安全** | 移除 `print(f"[SEARCH] SQL: {sql}")`，改为记录安全的关键词文本 |
 
 ---
 
-## v2.0 存在的问题与 v3.0 的改进
+### 修复 3：输入验证
 
-v2.0 虽然对 v1.0 做了完整的安全加固，但在功能完整性和教学用途上仍存在以下不足：
-
-### 问题一：用户数据无法持久化
-
-| 维度 | v2.0 的问题 | v3.0 的改进 |
-|------|------------|-------------|
-| **数据存储** | 使用内存字典 `USERS = {...}`，所有用户信息硬编码在源码中 | 引入 SQLite 数据库 `data/users.db`，数据持久化到磁盘，重启不丢失 |
-| **可扩展性** | 无法动态添加用户，只能修改源码 | `init_db()` 自动建表 + `INSERT OR IGNORE`，支持后续注册功能 |
-
-### 问题二：无法注册新用户
-
-| 维度 | v2.0 的问题 | v3.0 的改进 |
-|------|------------|-------------|
-| **注册功能** | ❌ 完全缺失，系统只有 admin 和 alice 两个固定账号 | ✅ 新增 `/register` 路由，支持 GET 显示表单 + POST 提交注册 |
-| **用户体验** | 新用户无法自助注册，必须由开发者修改代码 | 填写用户名、密码、邮箱、手机号即可自助注册 |
-
-### 问题三：无法搜索用户
-
-| 维度 | v2.0 的问题 | v3.0 的改进 |
-|------|------------|-------------|
-| **搜索功能** | ❌ 完全缺失 | ✅ 新增 `/search` 路由 + 首页搜索框（仅登录用户可用） |
-| **搜索维度** | 无 | 支持用户名和邮箱双维度 `LIKE` 模糊匹配 |
-
-### 关于登录功能的说明
-
-v3.0 **保持原有登录功能不变**，仍使用内存字典 `USERS` + `generate_password_hash()` bcrypt 验证。这意味着通过 `/register` 注册的新用户数据虽然写入了 SQLite，但登录时不会查询数据库，所以**新注册用户暂时无法登录系统**。这是为了"保持原有登录功能不变"的设计约束，后续版本可将登录改为查 SQLite 来解决。
+| 字段 | 验证规则 | 说明 |
+|------|---------|------|
+| 用户名 | 必填，2–50 字符 | 防止空值绕过长输入 |
+| 密码 | 必填，6–128 字符 | 防止空密码和超长输入 |
+| 邮箱 | 可选，正则 `xxx@yyy.zzz` | 防止构造恶意字符串 |
+| 手机号 | 可选，正则 `+`可选 + 7–15 位数字 | 防止非数字字符 |
+| 搜索关键词 | 最长 100 字符，超长截断 | 防止资源耗尽 |
 
 ---
 
-## 项目结构
+### 修复 4：搜索接口登录认证
+
+```python
+# 新增：未登录用户不可搜索
+username = session.get("username")
+if not username:
+    return redirect("/login")
+```
+
+---
+
+## 四、修复验证
+
+### UNION 注入测试
+```
+输入: keyword = ' UNION SELECT 1,'inj','inj@x.com','138'--
+预期: 参数化查询将整个字符串作为普通文本进行模糊匹配，不执行 UNION 子查询
+结果: 不会返回 "inj"，搜索无结果
+```
+
+### OR 注入测试
+```
+输入: keyword = ' OR '1'='1
+预期: 单引号被自动转义，作为普通文本搜索
+结果: 不会返回全部用户
+```
+
+### 注册注入测试
+```
+输入: username = "hacker', 'pass', 'h@x.com', '123')--"
+预期: 整个字符串作为用户名处理
+结果: INSERT 正常执行，单引号被正确转义存储
+```
+
+### 正常功能测试
+
+| 测试场景 | 输入 | 预期结果 |
+|---------|------|---------|
+| 搜索 "admin" | `keyword=admin` | 返回 admin 用户信息 |
+| 搜索 "alice" | `keyword=alice` | 返回 alice 用户信息 |
+| 搜索空值 | `keyword=` | 不执行搜索 |
+| 注册新用户 | 合法信息 | 成功注册并跳转登录页 |
+| 注册重名 | 已存在用户名 | 提示"用户名已存在" |
+| 未登录搜索 | 直接访问 `/search` | 重定向到 `/login` |
+
+---
+
+## 五、修复前后对比总结
+
+| 维度 | 修复前（f-string 拼接） | 修复后（参数化查询） |
+|------|------------------------|--------------------|
+| **SQL 构建方式** | `f"SELECT ... '{keyword}'..."` | `SELECT ... ?` + 参数元组 |
+| **特殊字符处理** | 直接嵌入 SQL，未转义 | SQLite 驱动自动转义 |
+| **输入验证** | 无任何验证 | 所有字段均有格式/长度校验 |
+| **搜索权限** | 任意用户（含未登录）可搜索 | 仅登录用户可搜索 |
+| **错误处理** | 仅捕获 IntegrityError | 完整性 + 通用异常双捕获 |
+| **SQL 日志** | `print()` 暴露完整 SQL | `logger.info()` 只记录安全文本 |
+
+---
+
+## 六、v3.0 与 v2.0 差异概要
+
+| 对比项 | v2.0 | v3.0 |
+|--------|------|------|
+| 用户注册 | ❌ 无 | ✅ 新增 `/register`（参数化查询） |
+| 用户搜索 | ❌ 无 | ✅ 新增 `/search`（参数化查询，需登录） |
+| SQLite 数据库 | ❌ 无 | ✅ `data/users.db` |
+| 登录功能 | USERS 字典 + bcrypt | **不变** |
+
+> ⚠️ v3.0 保持原有登录功能不变，仍用内存字典 `USERS` 校验，新注册用户暂无法登录。
+
+---
+
+## 七、项目结构
 
 ```
 3.0/
-├── app.py                     # Flask 主应用（登录 + 注册 + 搜索，SQL 注入已修复）
+├── app.py                     # 主应用（SQL 注入已修复）
 ├── setup.sh                   # 环境配置脚本
 ├── requirements.txt           # pip 依赖清单
 ├── data/
-│   └── users.db              # SQLite 数据库文件（首次启动自动生成）
+│   └── users.db              # SQLite 数据库（自动生成）
 ├── templates/
-│   ├── base.html              # 基础模板（导航栏含"注册"链接）
-│   ├── index.html             # 首页（已登录含搜索框 + 结果表格）
+│   ├── base.html              # 导航栏含"注册"链接
+│   ├── index.html             # 首页含搜索框 + 结果表格
 │   ├── login.html             # 登录页（含 CSRF token）
-│   └── register.html          # 注册页（新增，含 CSRF token）
+│   └── register.html          # 注册页
 └── static/css/
-    └── style.css              # 样式文件
+    └── style.css
 ```
-
-## 路由说明一览
-
-| 路由 | 方法 | 功能 | 来源 | 说明 |
-|------|------|------|------|------|
-| `/` | GET | 首页 | 继承 v2.0 | 已登录显示用户信息 + 搜索框；未登录提示登录 |
-| `/login` | GET / POST | 登录 | 继承 v2.0 | GET 显示表单，POST bcrypt 验证 + CSRF + 限流 |
-| `/logout` | GET | 登出 | 继承 v2.0 | 清除 session 并跳转首页 |
-| `/register` | GET / POST | 注册 | **v3.0 新增** | 参数化查询，含输入验证，SQL 注入已修复 |
-| `/search` | GET | 搜索 | **v3.0 新增** | 需登录，参数化查询 LIKE，SQL 注入已修复 |
 
 ---
 
-## 环境配置与运行
-
-### 方式一：setup.sh 自动配置（推荐）
+## 八、环境配置与运行
 
 ```bash
 cd /opt/Class01/3.0
 ./setup.sh
 python3 app.py
+# 访问 http://127.0.0.1:5000
 ```
 
-### 方式二：手动安装（apt）
+---
 
-```bash
-cd /opt/Class01/3.0
-sudo apt install -y python3-flask python3-flaskext.wtf python3-flask-limiter
-python3 app.py
-```
-
-### 方式三：虚拟环境
-
-```bash
-cd /opt/Class01/3.0
-python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt
-python3 app.py
-```
-
-> 服务仅监听 `http://127.0.0.1:5000`，仅本机可访问。
-
-> ⚠️ 不要直接执行 `pip install -r requirements.txt`（Kali 会报 PEP 668 错误），请使用上述三种方式之一。
+*本报告遵循 OWASP SQL Injection Prevention Cheat Sheet 最佳实践*
