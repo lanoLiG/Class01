@@ -1,0 +1,11 @@
+# ⚠️ Kali Linux：不要直接用 pip install，会报 PEP 668 错误！
+# 请用: sudo apt install python3-flask python3-flaskext.wtf python3-flask-limiter
+# 或运行: ./setup.sh
+#
+# 虚拟环境可用 pip:
+#   python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt
+
+flask>=3.0
+flask-wtf>=1.2
+flask-limiter>=3.0
+werkzeug>=3.0

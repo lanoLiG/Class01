@@ -1,0 +1,463 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #f5f7fa;
+    color: #333;
+    min-height: 100vh;
+}
+
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 32px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.nav-brand {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+
+.nav-menu {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.nav-welcome {
+    font-size: 14px;
+    opacity: 0.9;
+}
+
+.nav-link {
+    color: #fff;
+    text-decoration: none;
+    font-size: 14px;
+    padding: 6px 14px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.15);
+    transition: background 0.2s;
+}
+
+.nav-link:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.container {
+    max-width: 600px;
+    margin: 48px auto;
+    padding: 0 20px;
+}
+
+.card {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    padding: 32px;
+    margin-bottom: 24px;
+}
+
+.login-card {
+    max-width: 420px;
+    margin: 0 auto;
+}
+
+.card h2 {
+    margin-bottom: 24px;
+    font-size: 22px;
+    color: #333;
+}
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.form-group label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #555;
+}
+
+.form-group input {
+    padding: 10px 14px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.form-group input:focus {
+    border-color: #667eea;
+}
+
+.btn {
+    display: inline-block;
+    padding: 10px 24px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    text-align: center;
+    transition: background 0.2s;
+}
+
+.btn-primary {
+    background: #667eea;
+    color: #fff;
+}
+
+.btn-primary:hover {
+    background: #5a6fd6;
+}
+
+.btn-danger {
+    background: #e74c3c;
+    color: #fff;
+    margin-top: 16px;
+}
+
+.btn-danger:hover {
+    background: #c0392b;
+}
+
+.error-msg {
+    background: #fdecea;
+    color: #c0392b;
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    margin-bottom: 16px;
+}
+
+.user-info {
+    margin-top: 16px;
+}
+
+.user-info h3 {
+    font-size: 16px;
+    color: #666;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 8px;
+}
+
+.info-list {
+    list-style: none;
+    padding: 0;
+}
+
+.info-list li {
+    padding: 8px 0;
+    font-size: 14px;
+    border-bottom: 1px solid #f5f5f5;
+}
+
+.info-list li:last-child {
+    border-bottom: none;
+}
+
+.label {
+    font-weight: 600;
+    color: #555;
+    display: inline-block;
+    min-width: 60px;
+}
+
+/* ── 成功消息 ──────────────────────────────────── */
+.success-msg {
+    background: #e8f8e8;
+    color: #27ae60;
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    margin-bottom: 16px;
+}
+
+/* ── 分隔线 ────────────────────────────────────── */
+.divider {
+    border: none;
+    border-top: 1px solid #eee;
+    margin: 24px 0;
+}
+
+/* ── 搜索区域 ──────────────────────────────────── */
+.search-section {
+    margin-bottom: 16px;
+}
+
+.search-section h3 {
+    font-size: 16px;
+    color: #666;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 8px;
+}
+
+.search-form {
+    margin-bottom: 16px;
+}
+
+.search-group {
+    display: flex;
+    gap: 8px;
+}
+
+.search-group input {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.search-group input:focus {
+    border-color: #667eea;
+}
+
+.search-results {
+    margin-top: 16px;
+}
+
+.search-results h4 {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 12px;
+}
+
+/* ── 表格样式 ──────────────────────────────────── */
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.table thead {
+    background: #f5f7fa;
+}
+
+.table th {
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    color: #555;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+    color: #333;
+}
+
+.table tbody tr:hover {
+    background: #f8f9ff;
+}
+
+.no-results {
+    color: #999;
+    font-size: 14px;
+    padding: 16px 0;
+}
+
+/* ── 注册页面 ──────────────────────────────────── */
+.register-card {
+    max-width: 420px;
+    margin: 0 auto;
+}
+
+.register-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.form-footer {
+    margin-top: 16px;
+    text-align: center;
+    font-size: 14px;
+    color: #888;
+}
+
+.form-footer a {
+    color: #667eea;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.form-footer a:hover {
+    text-decoration: underline;
+}
+
+/* ── 上传页面 ──────────────────────────────────── */
+.upload-card {
+    max-width: 520px;
+    margin: 0 auto;
+}
+
+.upload-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.file-input {
+    padding: 8px 0;
+    font-size: 14px;
+}
+
+.upload-preview {
+    margin-top: 16px;
+    text-align: center;
+}
+
+.upload-preview h3 {
+    font-size: 16px;
+    color: #666;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 8px;
+}
+
+.preview-img {
+    max-width: 100%;
+    max-height: 300px;
+    border-radius: 8px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+    margin-bottom: 12px;
+}
+
+.file-link {
+    font-size: 13px;
+    color: #888;
+    word-break: break-all;
+}
+
+.file-link a {
+    color: #667eea;
+    text-decoration: none;
+}
+
+.file-link a:hover {
+    text-decoration: underline;
+}
+
+/* ── 操作按钮区域 ──────────────────────────────── */
+.action-links {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.action-links .btn {
+    margin-top: 0;
+}
+
+/* ── 修改密码 ────────────────────────────────────── */
+.change-password-section {
+    margin-top: 16px;
+}
+
+.change-password-section h3 {
+    font-size: 16px;
+    color: #666;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 8px;
+}
+
+.change-password-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.change-password-form .btn {
+    align-self: flex-start;
+}
+
+/* ── 动态页面内容 ──────────────────────────────── */
+.page-content-card {
+    max-width: 720px;
+    margin: 0 auto;
+}
+
+.help-page h2 {
+    font-size: 24px;
+    color: #333;
+    border-bottom: 2px solid #667eea;
+    padding-bottom: 12px;
+    margin-bottom: 24px;
+}
+
+.help-section {
+    margin-bottom: 28px;
+}
+
+.help-section h3 {
+    font-size: 17px;
+    color: #444;
+    margin-bottom: 12px;
+    padding-left: 10px;
+    border-left: 3px solid #667eea;
+}
+
+.help-section p {
+    font-size: 14px;
+    color: #666;
+    line-height: 1.8;
+    margin-bottom: 8px;
+}
+
+.help-section ul {
+    list-style: disc;
+    padding-left: 24px;
+}
+
+.help-section li {
+    font-size: 14px;
+    color: #666;
+    line-height: 1.8;
+    margin-bottom: 4px;
+}
+
+.help-section dl dt {
+    font-size: 14px;
+    font-weight: 600;
+    color: #444;
+    margin-top: 12px;
+    margin-bottom: 4px;
+}
+
+.help-section dl dd {
+    font-size: 14px;
+    color: #666;
+    line-height: 1.6;
+    padding-left: 16px;
+    margin-bottom: 4px;
+}
+
+.help-section strong {
+    color: #444;
+}

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block content %}
+
+{% if page_content %}
+<div class="card page-content-card">
+    {{ page_content | safe }}
+    <hr class="divider">
+    <a href="/" class="btn">返回首页</a>
+</div>
+{% else %}
+
+<div class="card">
+    {% if user %}
+        <h2>欢迎回来，{{ user.username }}！</h2>
+        <div class="user-info">
+            <h3>用户信息</h3>
+            <ul class="info-list">
+                <li><span class="label">用户名：</span>{{ user.username }}</li>
+                <li><span class="label">邮箱：</span>{{ user.email }}</li>
+                <li><span class="label">手机：</span>{{ user.phone }}</li>
+                <li><span class="label">角色：</span>{{ user.role }}</li>
+                <li><span class="label">余额：</span>{{ user.balance }}</li>
+            </ul>
+        </div>
+
+        <hr class="divider">
+
+        <div class="search-section">
+            <h3>用户搜索</h3>
+            <form method="get" action="/search" class="search-form">
+                <div class="search-group">
+                    <input type="text" id="keyword" name="keyword" placeholder="输入用户名或邮箱关键词" value="{{ search_keyword or '' }}">
+                    <button type="submit" class="btn btn-primary">搜索</button>
+                </div>
+            </form>
+
+            {% if search_keyword %}
+                <div class="search-results">
+                    <h4>搜索结果：关键词 "{{ search_keyword }}"</h4>
+                    {% if search_results %}
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>用户名</th>
+                                    <th>邮箱</th>
+                                    <th>手机</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in search_results %}
+                                <tr>
+                                    <td>{{ row.id }}</td>
+                                    <td>{{ row.username }}</td>
+                                    <td>{{ row.email }}</td>
+                                    <td>{{ row.phone }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <p class="no-results">无搜索结果</p>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+
+        <hr class="divider">
+
+        <div class="action-links">
+            <a href="/profile?user_id={{ current_user_id }}" class="btn btn-primary">个人中心</a>
+            <a href="/upload" class="btn btn-primary">上传头像</a>
+            <a href="/page?name=help" class="btn btn-primary">帮助中心</a>
+            <a href="/logout" class="btn btn-danger">退出登录</a>
+        </div>
+    {% else %}
+        <h2>请先登录</h2>
+        <p>您尚未登录，请点击下方按钮登录系统。</p>
+        <a href="/login" class="btn">前往登录</a>
+    {% endif %}
+</div>
+
+{% endif %}
+{% endblock %}
